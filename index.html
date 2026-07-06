@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>BridgeWebView Test Page</title>
+<style>
+  :root { --bg:#11151c; --card:#1b2230; --acc:#11416c; --ok:#1f8a4c; --bad:#b23b3b; --mut:#8aa; --txt:#e9eef5; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); padding:16px 16px 40px; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .sub { color:var(--mut); font-size:12px; margin-bottom:12px; }
+  .card { background:var(--card); border-radius:12px; padding:12px 14px; margin-bottom:12px; }
+  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); margin:0 0 10px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; }
+  button { appearance:none; border:0; border-radius:9px; padding:10px 12px; font-size:13px; font-weight:600;
+           color:#fff; background:var(--acc); cursor:pointer; }
+  button.bad { background:var(--bad); }
+  button:active { transform:translateY(1px); }
+  .kv { font-size:13px; line-height:1.7; }
+  .kv b { color:var(--mut); font-weight:600; }
+  .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:#0d2033; color:#7fd; }
+  .depth { font-size:22px; font-weight:700; margin:0 8px; }
+  #log { font-family:ui-monospace,Menlo,monospace; font-size:11px; line-height:1.5; max-height:34vh; overflow:auto;
+         background:#0c0f14; border-radius:9px; padding:10px; white-space:pre-wrap; word-break:break-word; }
+  .in { color:#7ecbff; } .out { color:#9ae6a4; } .warn { color:#ffcf6b; }
+</style>
+</head>
+<body>
+  <h1 id="title">BridgeWebView Test Page</h1>
+  <div class="sub">Env: <span id="env" class="pill">detecting…</span> · a reference implementation of the app↔web bridge SDK, with a button for every action the app handles.</div>
+
+  <div class="card">
+    <h2>init payload (app → page)</h2>
+    <div class="kv" id="init">waiting for <code>init</code> …</div>
+  </div>
+
+  <div class="card">
+    <h2>In-page history (for back testing)</h2>
+    <div class="row" style="align-items:center">
+      <button onclick="pushDepth()">Push in-page view</button>
+      <span>depth <span id="depth" class="depth">0</span></span>
+      <button onclick="popDepth()">Pop</button>
+    </div>
+    <div class="sub" style="margin:8px 0 0">Device/app back sends <code>backRequest</code>; this page replies <code>handled:true</code> while depth&gt;0 (pops in-page), and <code>handled:false</code> at depth 0 (app pops the screen).</div>
+  </div>
+
+  <div class="card">
+    <h2>Navigate (allowed hosts → native screens)</h2>
+    <div class="row">
+      <button onclick="B.navigate('dharmayana://pooja/details?id=POOJA_ID')">Open Pooja detail</button>
+      <button onclick="B.navigate('dharmayana://kundli_generation/details?id=PKG_ID')">Open Kundali detail</button>
+      <button onclick="B.navigate('dharmayana://kundli_generation/viewer?orderId=ORDER_2')">Open another Kundali viewer</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Actions (executed natively; show result)</h2>
+    <div class="row">
+      <button onclick="doAction('app://share',{text:'Check my kundali',url:'https://dharmayana.in'})">Share (text + url)</button>
+      <button onclick="doAction('app://share',{text:'My chart',imageUrl:'https://dharmayana.in/og.png'})">Share (image)</button>
+      <button onclick="doAction('app://reminder',{reminderType:'dhyana',title:'Daily kundali',times:['08:00 AM','07:00 PM'],refId:'k1'})">Set reminder</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Analytics (fire-and-forget)</h2>
+    <div class="row">
+      <button onclick="B.track('kundali_viewed',{screen:'overview'})">Track event</button>
+      <button onclick="B.track('kundali_section_opened',{section:'dosha'})">Track w/ params</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Screen control</h2>
+    <div class="row">
+      <button onclick="B.setTitle('Janma Kundali')">Set native title</button>
+      <button onclick="B.emitError('Simulated render failure')">Trigger app error UI</button>
+      <button onclick="B.close()">Close screen</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Negative tests (app should reject / ignore)</h2>
+    <div class="row">
+      <button class="bad" onclick="B.navigate('dharmayana://logout')">navigate logout (blocked)</button>
+      <button class="bad" onclick="B.navigate('https://evil.com')">navigate off-scheme (blocked)</button>
+      <button class="bad" onclick="doAction('app://wipe',{})">action app://wipe (blocked)</button>
+      <button class="bad" onclick="B.track('be_order_placed',{amount:999})">analytics be_* (blocked)</button>
+      <button class="bad" onclick="B.track('kundali_spoof',{source:'evil'})">analytics source spoof</button>
+    </div>
+    <div class="sub" style="margin:8px 0 0">These should produce NO native action (watch the app logs). The source-spoof event should still reach analytics but stamped <code>source: kundali_web</code>, not <code>evil</code>.</div>
+  </div>
+
+  <div class="card">
+    <h2>Message log</h2>
+    <div id="log"></div>
+  </div>
+
+<script>
+/* ------------------------------------------------------------------ *
+ *  AppBridge — reference SDK (mirror of docs .../specs/...bridge-web-view-design.md §16)
+ *  Transport: native = window.AppWebBridge (JS channel) + window.__appWebBridge.receive;
+ *             web    = window.parent.postMessage / window 'message'.
+ *  Wire: JSON string of { v:1, type, id?, payload? }.
+ * ------------------------------------------------------------------ */
+const isNative = !!(window.AppWebBridge && window.AppWebBridge.postMessage);
+
+function logLine(cls, dir, msg) {
+  const el = document.getElementById('log');
+  const t = new Date().toLocaleTimeString();
+  el.innerHTML = `<div class="${cls}">${t}  ${dir}  ${escapeHtml(JSON.stringify(msg))}</div>` + el.innerHTML;
+}
+function escapeHtml(s){return s.replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+
+function post(msg) {
+  msg.v = 1;
+  logLine('out', '⇧ app', msg);
+  const s = JSON.stringify(msg);
+  if (isNative) window.AppWebBridge.postMessage(s);
+  else window.parent.postMessage(s, '*'); // page→parent may use '*'; the APP pins a real origin inbound.
+}
+
+let _seq = 0;
+const _pending = new Map(); // id -> {resolve, timer}
+let _backHandler = () => false;
+
+const B = {
+  ready:    () => post({ type:'ready' }),
+  navigate: (uri) => post({ type:'navigate', payload:{ uri } }),
+  track:    (event, params={}) => post({ type:'analytics', payload:{ event, params } }),
+  setTitle: (title) => post({ type:'setTitle', payload:{ title } }),
+  emitError:(message) => post({ type:'error', payload:{ message } }),
+  close:    () => post({ type:'close' }),
+  setBackHandler: (fn) => { _backHandler = fn; },
+  // action() returns a Promise that resolves with the app's `result` (or times out).
+  action:   (uri, data={}) => new Promise((resolve) => {
+    const id = 'a' + (_seq++);
+    const timer = setTimeout(() => { _pending.delete(id); resolve({ ok:false, error:'timeout' }); }, 8000);
+    _pending.set(id, { resolve, timer });
+    post({ type:'action', id, payload:{ uri, data } });
+  }),
+};
+
+// Inbound dispatch (app → page)
+function handle(msg) {
+  logLine('in', '⇩ page', msg);
+  switch (msg.type) {
+    case 'init': {
+      const p = msg.payload || {};
+      const d = p.data || {};
+      document.getElementById('init').innerHTML =
+        `<b>locale</b> ${p.locale ?? '—'} · <b>platform</b> ${p.platform ?? '—'}<br>` +
+        `<b>orderId</b> ${d.orderId ?? '—'} · <b>contentType</b> ${d.contentType ?? '—'}<br>` +
+        `<b>auth</b> ${p.auth ? 'token present' : 'none'}`;
+      break;
+    }
+    case 'backRequest': {
+      const handled = !!_backHandler();
+      post({ type:'backResult', id: msg.id, payload:{ handled } });
+      break;
+    }
+    case 'result': {
+      const pend = _pending.get(msg.id);
+      if (pend) { clearTimeout(pend.timer); _pending.delete(msg.id); pend.resolve(msg.payload || { ok:true }); }
+      break;
+    }
+    default: /* setTitle/etc. are app-directed; nothing to do here */ break;
+  }
+}
+
+// UI helper: run an action and surface its result in the log.
+async function doAction(uri, data) {
+  const res = await B.action(uri, data);
+  logLine(res && res.ok ? 'out' : 'warn', '   result', { uri, ...res });
+}
+
+// In-page history simulation
+let depth = 0;
+function render(){ document.getElementById('depth').textContent = depth; }
+function pushDepth(){ depth++; render(); }
+function popDepth(){ if (depth>0) depth--; render(); }
+B.setBackHandler(() => { if (depth>0){ depth--; render(); return true; } return false; });
+
+// Wire transports
+window.__appWebBridge = { receive: (s) => { try { handle(JSON.parse(s)); } catch(e){ logLine('warn','   parse-fail', {s:String(s)}); } } };
+if (!isNative) {
+  window.addEventListener('message', (e) => {
+    // The app posts JSON strings. (In production, verify e.origin against the app origin.)
+    if (typeof e.data !== 'string') return;
+    try { handle(JSON.parse(e.data)); } catch(_) { /* ignore non-bridge messages */ }
+  });
+}
+
+document.getElementById('env').textContent = isNative ? 'native (JS channel)' : 'web (iframe/postMessage)';
+render();
+B.ready(); // announce; app replies with init
+</script>
+</body>
+</html>
