@@ -62,7 +62,7 @@ Every message in either direction is a **JSON string** of this shape:
     handle(JSON.parse(e.data));
   });
   ```
-- **Origin pinning (production):** post to the app's real origin (not `'*'`) and verify inbound `e.origin`. The app already pins **your** origin on its side (it only loads and only accepts messages from the configured page origin).
+- **Origin pinning (production):** post to the app's real origin — the Flutter web app runs at `https://app.dharmayana.in` (stage `https://app.stage.dharmayana.in`), not `'*'` — and verify inbound `e.origin`. The app already pins **your** origin (`https://dharmayana.in` / `https://web.stage.dharmayana.in`) on its side (it only loads and only accepts messages from there).
 
 ---
 
@@ -73,7 +73,8 @@ Include this once. It handles transport detection, the envelope, request/respons
 ```html
 <script>
 const isNative = !!(window.AppWebBridge && window.AppWebBridge.postMessage);
-const APP_ORIGIN = '*'; // TODO: set to the app's real origin in production
+const APP_ORIGIN = '*'; // testing only — in production set to the app origin:
+                        // https://app.dharmayana.in (stage: https://app.stage.dharmayana.in)
 
 function _post(msg) {
   msg.v = 1;
@@ -285,7 +286,7 @@ Fire-and-forget; routed to the app's analytics stack (Mixpanel / CleverTap / Fir
 
 ## 10. Back button contract (web-history-first)
 
-When the user presses device back (Android), the app-bar back, or the browser back, the app sends you a **`backRequest`**. You reply **`backResult`**:
+When the user presses the device back button (Android) or the browser back button (web), the app sends you a **`backRequest`**. You reply **`backResult`**: (kundali has no native app bar, so your own page control is the only on-screen back — see below.)
 
 - `handled: true` → **you** navigated back within the page (the app does nothing).
 - `handled: false` → you're at your root → **the app pops the viewer screen.**
@@ -308,7 +309,7 @@ Rules:
 ## 11. Security model (what the app enforces)
 - **Origin lock:** the webview/iframe is pinned to your configured origin. Links to other origins open in the system browser, not inside the viewer. Inbound messages from other origins are ignored.
 - **Config-key routing:** the app opens the viewer by a registered config key, never a raw URL — you can't be turned into an open redirect.
-- **navigate allow-list** (§7) and **analytics denylist/source-tag** (§9).
+- **navigate:** scheme-checked (`dharmayana://` only), not host-restricted for kundali (§7); the **action allow-list** (§8) and **analytics denylist/source-tag** (§9) remain enforced (those aren't browser-reachable).
 - **Do not** use `window.location = 'dharmayana://...'` or `<a href="dharmayana://...">` to drive app navigation — those are blocked. Use `AppBridge.navigate(...)`.
 
 ---
@@ -322,7 +323,7 @@ Rules:
 ---
 
 ## 13. Web-page checklist
-- [ ] Include the SDK (§4); set `APP_ORIGIN` for production.
+- [ ] Include the SDK (§4); set `APP_ORIGIN` to `https://app.dharmayana.in` (stage `https://app.stage.dharmayana.in`) for production.
 - [ ] Call `AppBridge.ready()` on load; render from `onInit` (`data.orderId`, `locale`).
 - [ ] Provide a visible **back/close** control (no native app bar); implement `setBackHandler`.
 - [ ] Use `AppBridge.navigate(...)` for app links (never `window.location`).
