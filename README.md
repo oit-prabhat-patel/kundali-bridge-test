@@ -208,7 +208,7 @@ AppBridge.navigate('dharmayana://kundli_generation/details?id=<packageId>');
 
 `panchanga` · `prarthana` · `kundli_generation` · `festivals` · `muhurta` · `festival` · `prediction` · `rashifal` · `articles` · `order` · `settings` · `astro_consultation` · `ayurveda_consultation` · `dharmik_counselling` · `pooja` · `dhyana` · `chp` · `wallpaper` · `streak` · `referral` · `hindu_tithi`
 
-> **Allow-list:** for security, each embedded page is restricted to a **curated subset** of hosts. The kundali viewer's production allow-list will be small (e.g. `pooja`, `kundli_generation`). **Tell the app team which hosts your page links to** so they're allow-listed. A non-allow-listed `navigate` is silently ignored (logged on the app side). (The hosted test harness runs with all hosts allowed.)
+> **Allow-list (kundali: none — all deeplinks allowed):** the kundali viewer accepts **any** `dharmayana://` deeplink, current and future. Deeplinks are a public entry point (any browser/link can already invoke them), so gating them here adds no real security — the app's deeplink handlers are the boundary. The scheme must still be `dharmayana://` (other schemes are rejected), and the bridge-only capabilities (**actions** §8 and **analytics** §9) remain gated because those *aren't* reachable from a browser. The bridge can optionally restrict hosts per-consumer, but kundali does not.
 
 `navigate` is fire-and-forget — no `result`.
 
@@ -328,11 +328,11 @@ Rules:
 - [ ] Use `AppBridge.navigate(...)` for app links (never `window.location`).
 - [ ] Gate reminder UI on `init.platform !== 'web'`.
 - [ ] Use `history.pushState` for internal navigation (so web back works).
-- [ ] Give the app team: your **origin**, the **navigate hosts** you use, and confirm **no auth** is needed.
+- [ ] Give the app team your **origin** and confirm **no auth** is needed. (Navigation is open — no host list to coordinate.)
 
 ## 14. Open items (coordinate with the app team)
 - Final **page URLs per environment** (stage/prod) + origins.
 - Exact **`init.data`** contents beyond `{ orderId, contentType }`, if anything.
-- The **navigate allow-list** for kundali (which hosts your page links to).
+- ~~navigate allow-list~~ — **decided: kundali allows all deeplinks** (no allow-list; deeplinks are a public surface).
 - Confirm reminder field expectations match your data model.
 - Whether the "mark remedy complete" side-effect is needed.
