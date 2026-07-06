@@ -21,14 +21,14 @@
   .kv b { color:var(--mut); font-weight:600; }
   .pill { display:inline-block; padding:2px 8px; border-radius:20px; font-size:11px; background:#0d2033; color:#7fd; }
   .depth { font-size:22px; font-weight:700; margin:0 8px; }
-  #log { font-family:ui-monospace,Menlo,monospace; font-size:11px; line-height:1.5; max-height:34vh; overflow:auto;
+  #log { font-family:ui-monospace,Menlo,monospace; font-size:11px; line-height:1.5; max-height:32vh; overflow:auto;
          background:#0c0f14; border-radius:9px; padding:10px; white-space:pre-wrap; word-break:break-word; }
   .in { color:#7ecbff; } .out { color:#9ae6a4; } .warn { color:#ffcf6b; }
 </style>
 </head>
 <body>
   <h1 id="title">BridgeWebView Test Page</h1>
-  <div class="sub">Env: <span id="env" class="pill">detecting…</span> · a reference implementation of the app↔web bridge SDK, with a button for every action the app handles.</div>
+  <div class="sub">Env: <span id="env" class="pill">detecting…</span> · reference implementation of the app↔web bridge SDK + a button for every action the app handles.</div>
 
   <div class="card">
     <h2>init payload (app → page)</h2>
@@ -42,16 +42,23 @@
       <span>depth <span id="depth" class="depth">0</span></span>
       <button onclick="popDepth()">Pop</button>
     </div>
-    <div class="sub" style="margin:8px 0 0">Device/app back sends <code>backRequest</code>; this page replies <code>handled:true</code> while depth&gt;0 (pops in-page), and <code>handled:false</code> at depth 0 (app pops the screen).</div>
+    <div class="sub" style="margin:8px 0 0">Device/app back sends <code>backRequest</code>; page replies <code>handled:true</code> while depth&gt;0 (pops in-page), <code>handled:false</code> at depth 0 (app pops the screen).</div>
   </div>
 
   <div class="card">
-    <h2>Navigate (allowed hosts → native screens)</h2>
+    <h2>Navigate — feature homepages (any deeplink the app supports)</h2>
     <div class="row">
-      <button onclick="B.navigate('dharmayana://pooja/details?id=POOJA_ID')">Open Pooja detail</button>
-      <button onclick="B.navigate('dharmayana://kundli_generation/details?id=PKG_ID')">Open Kundali detail</button>
-      <button onclick="B.navigate('dharmayana://kundli_generation/viewer?orderId=ORDER_2')">Open another Kundali viewer</button>
+      <button onclick="B.navigate('dharmayana://pooja')">Pooja home</button>
+      <button onclick="B.navigate('dharmayana://kundli_generation')">Kundali home</button>
+      <button onclick="B.navigate('dharmayana://panchanga')">Panchanga</button>
+      <button onclick="B.navigate('dharmayana://muhurta')">Muhurta</button>
+      <button onclick="B.navigate('dharmayana://festivals')">Festivals</button>
+      <button onclick="B.navigate('dharmayana://dhyana')">Dhyana</button>
+      <button onclick="B.navigate('dharmayana://prarthana')">Prarthana</button>
+      <button onclick="B.navigate('dharmayana://rashifal')">Rashifal</button>
+      <button onclick="B.navigate('dharmayana://hindu_tithi')">Hindu Tithi</button>
     </div>
+    <div class="sub" style="margin:8px 0 0">Detail deeplinks work the same with real ids, e.g. <code>dharmayana://pooja/details?id=&lt;id&gt;</code>, <code>dharmayana://kundli_generation/details?id=&lt;pkg&gt;</code>.</div>
   </div>
 
   <div class="card">
@@ -59,8 +66,9 @@
     <div class="row">
       <button onclick="doAction('app://share',{text:'Check my kundali',url:'https://dharmayana.in'})">Share (text + url)</button>
       <button onclick="doAction('app://share',{text:'My chart',imageUrl:'https://dharmayana.in/og.png'})">Share (image)</button>
-      <button onclick="doAction('app://reminder',{reminderType:'dhyana',title:'Daily kundali',times:['08:00 AM','07:00 PM'],refId:'k1'})">Set reminder</button>
+      <button onclick="doReminder()">Set / delete reminder (full)</button>
     </div>
+    <div class="sub" style="margin:8px 0 0">Reminder sends the full e-remedy payload (orderId/id/name/frequencyDays/times/recurrenceKey/reminderType/orderType). First tap = set; tap again = delete (toggles on the app's Hive state, exactly like the order-detail remedy card).</div>
   </div>
 
   <div class="card">
@@ -89,7 +97,7 @@
       <button class="bad" onclick="B.track('be_order_placed',{amount:999})">analytics be_* (blocked)</button>
       <button class="bad" onclick="B.track('kundali_spoof',{source:'evil'})">analytics source spoof</button>
     </div>
-    <div class="sub" style="margin:8px 0 0">These should produce NO native action (watch the app logs). The source-spoof event should still reach analytics but stamped <code>source: kundali_web</code>, not <code>evil</code>.</div>
+    <div class="sub" style="margin:8px 0 0">These should produce NO native action. The source-spoof event still reaches analytics but stamped <code>source: kundali_web</code>, not <code>evil</code>.</div>
   </div>
 
   <div class="card">
@@ -98,12 +106,8 @@
   </div>
 
 <script>
-/* ------------------------------------------------------------------ *
- *  AppBridge — reference SDK (mirror of docs .../specs/...bridge-web-view-design.md §16)
- *  Transport: native = window.AppWebBridge (JS channel) + window.__appWebBridge.receive;
- *             web    = window.parent.postMessage / window 'message'.
- *  Wire: JSON string of { v:1, type, id?, payload? }.
- * ------------------------------------------------------------------ */
+/* AppBridge — reference SDK. Native = window.AppWebBridge channel + window.__appWebBridge.receive;
+   web = window.parent.postMessage / window 'message'. Wire = JSON string of {v:1,type,id?,payload?}. */
 const isNative = !!(window.AppWebBridge && window.AppWebBridge.postMessage);
 
 function logLine(cls, dir, msg) {
@@ -118,11 +122,11 @@ function post(msg) {
   logLine('out', '⇧ app', msg);
   const s = JSON.stringify(msg);
   if (isNative) window.AppWebBridge.postMessage(s);
-  else window.parent.postMessage(s, '*'); // page→parent may use '*'; the APP pins a real origin inbound.
+  else window.parent.postMessage(s, '*');
 }
 
 let _seq = 0;
-const _pending = new Map(); // id -> {resolve, timer}
+const _pending = new Map();
 let _backHandler = () => false;
 
 const B = {
@@ -133,7 +137,6 @@ const B = {
   emitError:(message) => post({ type:'error', payload:{ message } }),
   close:    () => post({ type:'close' }),
   setBackHandler: (fn) => { _backHandler = fn; },
-  // action() returns a Promise that resolves with the app's `result` (or times out).
   action:   (uri, data={}) => new Promise((resolve) => {
     const id = 'a' + (_seq++);
     const timer = setTimeout(() => { _pending.delete(id); resolve({ ok:false, error:'timeout' }); }, 8000);
@@ -142,59 +145,65 @@ const B = {
   }),
 };
 
-// Inbound dispatch (app → page)
 function handle(msg) {
   logLine('in', '⇩ page', msg);
   switch (msg.type) {
     case 'init': {
-      const p = msg.payload || {};
-      const d = p.data || {};
+      const p = msg.payload || {}; const d = p.data || {};
       document.getElementById('init').innerHTML =
         `<b>locale</b> ${p.locale ?? '—'} · <b>platform</b> ${p.platform ?? '—'}<br>` +
         `<b>orderId</b> ${d.orderId ?? '—'} · <b>contentType</b> ${d.contentType ?? '—'}<br>` +
         `<b>auth</b> ${p.auth ? 'token present' : 'none'}`;
       break;
     }
-    case 'backRequest': {
-      const handled = !!_backHandler();
-      post({ type:'backResult', id: msg.id, payload:{ handled } });
-      break;
-    }
+    case 'backRequest': post({ type:'backResult', id: msg.id, payload:{ handled: !!_backHandler() } }); break;
     case 'result': {
       const pend = _pending.get(msg.id);
       if (pend) { clearTimeout(pend.timer); _pending.delete(msg.id); pend.resolve(msg.payload || { ok:true }); }
       break;
     }
-    default: /* setTitle/etc. are app-directed; nothing to do here */ break;
+    default: break;
   }
 }
 
-// UI helper: run an action and surface its result in the log.
 async function doAction(uri, data) {
   const res = await B.action(uri, data);
   logLine(res && res.ok ? 'out' : 'warn', '   result', { uri, ...res });
 }
 
-// In-page history simulation
+// Full e-remedy reminder payload (mirrors order-detail card fields).
+function doReminder() {
+  doAction('app://reminder', {
+    orderId: 'TEST123',
+    id: 'remedy-1',
+    name: 'Gayatri Mantra',
+    frequencyDays: 'monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+    reminderTime: '08:00 AM',
+    reminderTimes: ['08:00 AM', '07:00 PM'],
+    endDate: '30 Aug 2026',
+    recurrenceKey: 'daily__08:00,19:00',
+    reminderType: 'dhyana',
+    orderType: 'kundali',
+  });
+}
+
 let depth = 0;
 function render(){ document.getElementById('depth').textContent = depth; }
 function pushDepth(){ depth++; render(); }
 function popDepth(){ if (depth>0) depth--; render(); }
 B.setBackHandler(() => { if (depth>0){ depth--; render(); return true; } return false; });
 
-// Wire transports
 window.__appWebBridge = { receive: (s) => { try { handle(JSON.parse(s)); } catch(e){ logLine('warn','   parse-fail', {s:String(s)}); } } };
 if (!isNative) {
   window.addEventListener('message', (e) => {
-    // The app posts JSON strings. (In production, verify e.origin against the app origin.)
     if (typeof e.data !== 'string') return;
-    try { handle(JSON.parse(e.data)); } catch(_) { /* ignore non-bridge messages */ }
+    try { handle(JSON.parse(e.data)); } catch(_) {}
   });
 }
 
 document.getElementById('env').textContent = isNative ? 'native (JS channel)' : 'web (iframe/postMessage)';
 render();
-B.ready(); // announce; app replies with init
+B.ready();
 </script>
 </body>
 </html>
