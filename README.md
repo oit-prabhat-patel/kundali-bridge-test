@@ -331,7 +331,7 @@ Rules:
 - [ ] Give the app team your **origin** and confirm **no auth** is needed. (Navigation is open — no host list to coordinate.)
 
 ## 14. Open items (coordinate with the app team)
-- Final **page URLs per environment** (stage/prod) + origins.
+- ~~page URLs/origins~~ — **decided:** the app trusts `https://dharmayana.in` (prod) and `https://web.stage.dharmayana.in` (stage), all paths. **You still owe the app team the exact page path** where you deploy the kundali page (the app currently uses `/kundali-view` as a placeholder + appends `?orderId=`).
 - Exact **`init.data`** contents beyond `{ orderId, contentType }`, if anything.
 - ~~navigate allow-list~~ — **decided: kundali allows all deeplinks** (no allow-list; deeplinks are a public surface).
 - Confirm reminder field expectations match your data model.
