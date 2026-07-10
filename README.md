@@ -27,8 +27,8 @@ Your page runs the **same code** on all three — the tiny SDK in §4 abstracts 
 - Must be served over **HTTPS** (iOS App Transport Security).
 
 **How the viewer is opened (app-side — relevant if you generate links):**
-- From the **order-detail screen** (the kundali card): the app passes `order.digital_report_url` + `orderId`.
-- Via **deeplink**: `dharmayana://orders/viewer?id=<orderId>&url=<url-encoded viewer URL>` — opens the viewer with the order-detail screen **behind** it (back returns there). The `url` must be **percent-encoded** (it carries its own `?order_id=…`) and must be an `https://*.dharmayana.in` URL. Auth-gated: a logged-out user is sent to login first.
+- From the **order-detail screen** (the kundali card): the app reads the attachment's `digital_report_url` + `orderId`.
+- Via **deeplink**: `dharmayana://order/viewer?id=<orderId>&url=<url-encoded viewer URL>` — note the feature host is **`order`** (singular), not `orders`. Opens the viewer with the order-detail screen **behind** it (back returns there). The `url` must be **percent-encoded** (it carries its own `?order_id=…`) and must be an `https://*.dharmayana.in` URL. Auth-gated: a logged-out user is sent to login first.
 
 ---
 
